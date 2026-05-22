@@ -2,6 +2,7 @@ import json
 import math
 import os
 import random
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,10 +28,14 @@ import classmodel
 
 TANG_OFFSETS = list(range(0, 58000, 1000))
 RAW_FOLDER = urllib.parse.quote("全唐诗")
-RAW_URL = (
+RAW_URLS = [
     "https://raw.githubusercontent.com/chinese-poetry/chinese-poetry/master/"
-    f"{RAW_FOLDER}/poet.tang.{{offset}}.json"
-)
+    f"{RAW_FOLDER}/poet.tang.{{offset}}.json",
+    "https://cdn.jsdelivr.net/gh/chinese-poetry/chinese-poetry@master/"
+    f"{RAW_FOLDER}/poet.tang.{{offset}}.json",
+    "https://fastly.jsdelivr.net/gh/chinese-poetry/chinese-poetry@master/"
+    f"{RAW_FOLDER}/poet.tang.{{offset}}.json",
+]
 
 
 @dataclass
@@ -39,7 +44,7 @@ class TrainConfig:
     data_dir: str = "data"
     poem_type: int = 7
     batch_size: int = 64
-    epochs: int = 24
+    epochs: int = 60
     lr: float = 3e-4
     embedding_dim: int = 128
     hidden_dim: int = 600
@@ -51,6 +56,8 @@ class TrainConfig:
     checkpoint_every_batches: int = 200
     log_interval: int = 60
     max_files: int = 0
+    download_retries: int = 3
+    strict_download: bool = False
     force_download: bool = False
     force_process: bool = False
     resume: bool = True
@@ -86,35 +93,66 @@ def _valid_json(path):
         return False
 
 
-def _download_file(url, destination):
+def _download_file(urls, destination, retries=3):
+    if isinstance(urls, str):
+        urls = [urls]
+
     temp_path = destination.with_suffix(destination.suffix + ".tmp")
-    try:
-        with urllib.request.urlopen(url, timeout=60) as response:
-            total = int(response.headers.get("Content-Length", "0") or 0)
-            downloaded = 0
-            with open(temp_path, "wb") as f:
-                while True:
-                    chunk = response.read(1024 * 256)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total:
-                        pct = downloaded / total * 100
-                        print(
-                            f"  {destination.name}: {downloaded / 1024 / 1024:.1f}MB "
-                            f"/ {total / 1024 / 1024:.1f}MB ({pct:.0f}%)",
-                            end="\r",
-                        )
-        temp_path.replace(destination)
-        print(f"  {destination.name}: done{' ' * 30}")
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        if temp_path.exists():
-            temp_path.unlink()
-        raise RuntimeError(f"download failed: {url}\n{exc}") from exc
+    last_error = None
+
+    for url in urls:
+        for attempt in range(1, retries + 1):
+            if temp_path.exists():
+                temp_path.unlink()
+            try:
+                request = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Apple Silicon) LSTM-poetry-downloader",
+                        "Accept": "application/json,text/plain,*/*",
+                    },
+                )
+                with urllib.request.urlopen(request, timeout=90) as response:
+                    total = int(response.headers.get("Content-Length", "0") or 0)
+                    downloaded = 0
+                    with open(temp_path, "wb") as f:
+                        while True:
+                            chunk = response.read(1024 * 256)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total:
+                                pct = downloaded / total * 100
+                                print(
+                                    f"  {destination.name}: {downloaded / 1024 / 1024:.1f}MB "
+                                    f"/ {total / 1024 / 1024:.1f}MB ({pct:.0f}%)",
+                                    end="\r",
+                                )
+                temp_path.replace(destination)
+                if not _valid_json(destination):
+                    destination.unlink(missing_ok=True)
+                    raise RuntimeError("downloaded file is not valid JSON")
+                print(f"  {destination.name}: done{' ' * 30}")
+                return
+            except (urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
+                last_error = exc
+                if temp_path.exists():
+                    temp_path.unlink()
+                if attempt < retries:
+                    wait_seconds = min(20, 2 ** (attempt - 1)) + random.random()
+                    print(
+                        f"  {destination.name}: retry {attempt}/{retries} failed "
+                        f"({exc}); wait {wait_seconds:.1f}s"
+                    )
+                    time.sleep(wait_seconds)
+                else:
+                    print(f"  {destination.name}: mirror failed after {retries} attempts: {url}")
+
+    raise RuntimeError(f"download failed: {destination.name}\nlast error: {last_error}")
 
 
-def ensure_dataset(raw_dir, max_files=0, force_download=False):
+def ensure_dataset(raw_dir, max_files=0, force_download=False, download_retries=3, strict_download=False):
     raw_path = Path(raw_dir)
     raw_path.mkdir(parents=True, exist_ok=True)
 
@@ -127,17 +165,29 @@ def ensure_dataset(raw_dir, max_files=0, force_download=False):
 
     offsets = TANG_OFFSETS[:max_files] if max_files and max_files > 0 else TANG_OFFSETS
     print(f"Checking Tang poem JSON dataset in {raw_path} ...")
+    failed = []
     for offset in offsets:
         destination = raw_path / f"poet.tang.{offset}.json"
         if destination.exists() and not force_download and _valid_json(destination):
             continue
-        url = RAW_URL.format(offset=offset)
         print(f"Downloading {destination.name}")
-        _download_file(url, destination)
+        urls = [template.format(offset=offset) for template in RAW_URLS]
+        try:
+            _download_file(urls, destination, retries=download_retries)
+        except RuntimeError as exc:
+            failed.append(destination.name)
+            if strict_download:
+                raise
+            print(f"Warning: skip {destination.name} for now: {exc}")
 
-    jsons = sorted(raw_path.glob("*.json"))
+    jsons = [path for path in sorted(raw_path.glob("*.json")) if _valid_json(path)]
     if not jsons:
         raise FileNotFoundError(f"No JSON files found in {raw_path}")
+    if failed:
+        print(
+            f"Downloaded/available JSON files: {len(jsons)}. "
+            f"Missing {len(failed)} files; training will use the available subset."
+        )
     return jsons
 
 
@@ -512,7 +562,13 @@ def run_training(config):
     figure_dir.mkdir(parents=True, exist_ok=True)
     sample_dir.mkdir(parents=True, exist_ok=True)
 
-    ensure_dataset(config.raw_dir, max_files=config.max_files, force_download=config.force_download)
+    ensure_dataset(
+        config.raw_dir,
+        max_files=config.max_files,
+        force_download=config.force_download,
+        download_retries=config.download_retries,
+        strict_download=config.strict_download,
+    )
     process_1(config.raw_dir, config.data_dir, force=config.force_process, max_files=config.max_files)
 
     poem_path = data_dir / f"poem_{config.poem_type}.txt"

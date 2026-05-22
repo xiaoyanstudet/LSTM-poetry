@@ -12,7 +12,7 @@ def parse_args():
     parser.add_argument("--data-dir", default="data", help="folder for processed data, checkpoints, figures")
     parser.add_argument("--poem-type", type=int, choices=[5, 7], default=7, help="train five-character or seven-character quatrains")
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=24)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--embedding-dim", type=int, default=128)
     parser.add_argument("--hidden-dim", type=int, default=600)
@@ -29,6 +29,8 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=0.9)
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--max-files", type=int, default=0, help="download/process first N JSON files; 0 means full dataset")
+    parser.add_argument("--download-retries", type=int, default=3, help="retry count for each download mirror")
+    parser.add_argument("--strict-download", action="store_true", help="fail if any dataset file cannot be downloaded")
     parser.add_argument("--force-download", action="store_true")
     parser.add_argument("--force-process", action="store_true")
     parser.add_argument("--no-resume", action="store_true", help="start from scratch instead of latest checkpoint")
@@ -60,6 +62,8 @@ def main():
         checkpoint_every_batches=args.checkpoint_every_batches,
         log_interval=args.log_interval,
         max_files=args.max_files,
+        download_retries=args.download_retries,
+        strict_download=args.strict_download,
         force_download=args.force_download,
         force_process=args.force_process,
         resume=not args.no_resume,
@@ -74,4 +78,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
