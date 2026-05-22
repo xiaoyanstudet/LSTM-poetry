@@ -7,7 +7,7 @@
 - 当前入口文件：`main.py`
 - 当前训练命令：`python main.py`
 - 当前默认训练目标：七言绝句，`poem_type=7`
-- 当前默认训练轮数：`main.py` 中 `--epochs` 默认值为 50
+- 当前默认训练轮数：`main.py` 中 `--epochs` 默认值为 30
 - 数据目录：`tangshi/`
 - 训练产物目录：`data/`
 - 最新 checkpoint：`data/checkpoints/poem_7_latest.pt`
@@ -341,33 +341,107 @@ data/poem_5.txt: 3912 首
    - `weight_decay`
    - 更高 dropout
 
+## V0.9 简体化、格式约束与 Early Stopping
+
+### 为什么这么改
+
+50 轮训练后已经出现过拟合：训练 loss 继续下降，但验证 loss 和 perplexity 回升。同时，生成结果里存在两个明显问题：
+
+- 训练数据来自古籍 JSON，包含大量繁体字和异体字。
+- 生成阶段自由采样标点，不能稳定保证 `7字，7字。7字，7字。` 的格式。
+
+因此本版本优先处理数据规范化、生成约束和过拟合控制，而不是继续加大模型或增加 epoch。
+
+### 改动了什么
+
+- 默认 epoch 改为 30：
+  - `main.py` 中 `--epochs` 默认值改为 30。
+  - `function.TrainConfig.epochs` 默认值改为 30。
+- 预处理阶段默认繁转简：
+  - 新增 `to_simplified()`。
+  - 若安装了 `opencc-python-reimplemented`，优先使用 OpenCC。
+  - 若未安装 OpenCC，使用内置常见繁简映射兜底。
+- 用户输入首句也会做同样的简体化处理。
+- 生成阶段默认强制格式：
+  - 五言：第 6、12、18、24 个字符位置强制为 `，。 ，。`。
+  - 七言：第 8、16、24、32 个字符位置强制为 `，。 ，。`。
+  - 非标点位置禁止采样 `，`、`。`、`、`、`？`、`！` 等标点。
+- 增加缓存元信息：
+  - 新增 `data/process_meta.json`。
+  - 如果预处理版本、简体化设置或数据文件数量变化，会自动重建 `poem_5.txt` 和 `poem_7.txt`。
+  - 缓存签名会记录当前简体转换器来源；安装 OpenCC 后，旧的 fallback 简体缓存会自动失效并重建。
+- 加入 early stopping：
+  - 新增 `--early-stopping-patience`，默认 8。
+  - 新增 `--early-stopping-min-delta`，默认 `1e-3`。
+  - 验证 loss 连续多轮没有改善时自动停止。
+- 保存最佳模型：
+  - `data/checkpoints/poem_7_best.pt`
+  - `data/checkpoints/poem_7_latest.pt`
+- 降低过拟合风险：
+  - `hidden_dim` 默认从 600 降为 512。
+  - `dropout` 默认从 0.2 提高到 0.3。
+  - 新增 `weight_decay=1e-4`。
+- 新增参数：
+  - `--no-simplify-text`
+  - `--no-format-constraint`
+  - `--weight-decay`
+  - `--early-stopping-patience`
+  - `--early-stopping-min-delta`
+
+### 结果
+
+使用本地极小测试数据验证：
+
+```text
+原始输入：湖光秋月兩相和，潭面無風鏡未磨。遙望洞庭山水翠，白銀盤裏一青螺。
+预处理后：湖 光 秋 月 两 相 和 ， 潭 面 无 风 镜 未 磨 。 遥 望 洞 庭 山 水 翠 ， 白 银 盘 里 一 青 螺 。
+format_accuracy=100.00%
+best_epoch=1
+```
+
+生成样例格式已经被强制稳定为：
+
+```text
+湖光秋月两相和，磨面磨磨螺面面。面洞水磨磨螺磨，面洞磨磨面面磨。
+```
+
+注意：这是极小假数据验证，只证明代码链路正确。真实效果需要重新处理完整数据并从简体化新数据重新训练。
+
+### 使用方式
+
+默认即可训练 30 轮：
+
+```bash
+python main.py
+```
+
+如果旧的 `data/poem_7.txt` 是繁体缓存，本版本会自动检测缓存过期并重建。旧的 50 轮 checkpoint 因词表不同会被自动跳过，从新数据重新训练。
+
 ## 后续版本计划
 
-### V0.9 简体化与格式约束
+### V1.0 生成质量继续优化
 
 计划改动：
 
-- 在预处理阶段统一转换为简体中文。
-- 对用户输入的起始句也做同样转换。
-- 生成时强制七言/五言标点位置。
-- 非标点位置禁止输出 `，`、`。`、`、`、`？`、`！` 等标点。
+- 对重复字、重复短语增加惩罚。
+- 增加 beam search 或 nucleus sampling。
+- 增加更多人工评分辅助项。
+- 对首句续写做更严格的位置对齐。
 
 预期结果：
 
-- 避免生成繁体字。
-- 显著提升 `format_accuracy`。
-- 首句如 `湖光秋月两相和` 不再因为词表缺字而丢字。
+- 减少机械重复。
+- 提高语义连贯性和可读性。
 
-### V1.0 Early Stopping 与最佳模型保存
+### V1.1 更强模型结构
 
 计划改动：
 
-- 新增 `best.pt`。
-- 当验证 loss 创新低时保存最佳模型。
-- 若连续若干轮验证 loss 没有改善，自动停止训练。
+- 尝试 Attention LSTM。
+- 尝试小型 Transformer Decoder。
+- 比较 LSTM 与 Transformer 的生成质量。
 
 预期结果：
 
-- 避免使用明显过拟合的后期 checkpoint。
-- 报告中可以说明最佳 epoch，而不是只展示最后一轮。
-
+- 报告中可以形成模型对比实验。
+- 判断当前任务是否值得从 LSTM 升级到 Transformer。

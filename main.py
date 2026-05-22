@@ -12,17 +12,22 @@ def parse_args():
     parser.add_argument("--data-dir", default="data", help="folder for processed data, checkpoints, figures")
     parser.add_argument("--poem-type", type=int, choices=[5, 7], default=7, help="train five-character or seven-character quatrains")
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--embedding-dim", type=int, default=128)
-    parser.add_argument("--hidden-dim", type=int, default=600)
+    parser.add_argument("--hidden-dim", type=int, default=512)
     parser.add_argument("--num-layers", type=int, default=2)
-    parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--dropout", type=float, default=0.3)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--eval-batches", type=int, default=30)
     parser.add_argument("--sample-count", type=int, default=8)
     parser.add_argument("--checkpoint-every-batches", type=int, default=200)
     parser.add_argument("--log-interval", type=int, default=60)
+    parser.add_argument("--early-stopping-patience", type=int, default=8)
+    parser.add_argument("--early-stopping-min-delta", type=float, default=1e-3)
+    parser.add_argument("--no-simplify-text", action="store_true", help="keep original traditional/variant characters")
+    parser.add_argument("--no-format-constraint", action="store_true", help="let generation sample punctuation freely")
     parser.add_argument("--device", default="auto", help="auto, mps, cpu, cuda")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--start-words", default="湖光秋月两相和")
@@ -56,11 +61,16 @@ def main():
         hidden_dim=args.hidden_dim,
         num_layers=args.num_layers,
         dropout=args.dropout,
+        weight_decay=args.weight_decay,
         val_ratio=args.val_ratio,
         eval_batches=args.eval_batches,
         sample_count=args.sample_count,
         checkpoint_every_batches=args.checkpoint_every_batches,
         log_interval=args.log_interval,
+        early_stopping_patience=args.early_stopping_patience,
+        early_stopping_min_delta=args.early_stopping_min_delta,
+        simplify_text=not args.no_simplify_text,
+        constrain_format=not args.no_format_constraint,
         max_files=args.max_files,
         download_retries=args.download_retries,
         strict_download=args.strict_download,
