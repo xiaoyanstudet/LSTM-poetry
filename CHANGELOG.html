@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>LSTM &#x81ea;&#x52a8;&#x5199;&#x8bd7;&#x9879;&#x76ee;&#x4ee3;&#x7801;&#x6539;&#x52a8;&#x8bb0;&#x5f55;</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 20px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        <style>
+
+</style>
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="lstm-自动写诗项目代码改动记录">LSTM 自动写诗项目代码改动记录</h1>
+<p>本文档记录本项目从师兄原始代码到当前版本的主要改动、改动原因、改动内容和验证结果。后续每次做较大代码调整时，建议继续按同样格式追加记录，并在 Git 中提交一个对应版本。</p>
+<h2 id="当前状态概览">当前状态概览</h2>
+<ul>
+<li>当前入口文件：<code>main.py</code></li>
+<li>当前训练命令：<code>python main.py</code></li>
+<li>当前默认训练目标：七言绝句，<code>poem_type=7</code></li>
+<li>当前默认训练轮数：<code>main.py</code> 中 <code>--epochs</code> 默认值为 50</li>
+<li>数据目录：<code>tangshi/</code></li>
+<li>训练产物目录：<code>data/</code></li>
+<li>最新 checkpoint：<code>data/checkpoints/poem_7_latest.pt</code></li>
+<li>指标图：<code>data/figures/training_metrics_7.png</code></li>
+<li>样例输出：<code>data/samples/</code></li>
+</ul>
+<h2 id="v00-师兄原始版本">V0.0 师兄原始版本</h2>
+<h3 id="为什么需要改">为什么需要改</h3>
+<p>原始代码可以体现基本训练流程，但直接在当前 Mac 环境中运行会遇到几个问题：</p>
+<ul>
+<li>项目目录没有自带 <code>tangshi/</code> 数据集。</li>
+<li>代码依赖 <code>gensim.Word2Vec</code>，当前环境缺少 <code>gensim</code>。</li>
+<li>代码写死 <code>cuda</code>，MacBook M 系列不能直接使用 CUDA。</li>
+<li>没有断点续训机制，中断后需要从头训练。</li>
+<li>没有系统化评测和可视化图表。</li>
+<li>生成阶段自由采样，不能保证七言格式。</li>
+</ul>
+<h3 id="原始代码结构">原始代码结构</h3>
+<ul>
+<li><code>main.py</code>：写死 <code>path1='tangshi'</code>、<code>path2='data'</code>，调用 <code>function.train(path1, path2, 7, 64)</code>。</li>
+<li><code>function.py</code>：读取 JSON 文件，筛选五言/七言古诗，使用 Word2Vec 训练词向量，再训练 LSTM。</li>
+<li><code>classmodel.py</code>：定义 Dataset 和 LSTM 模型，内部多处写死 <code>.to('cuda')</code>。</li>
+</ul>
+<h3 id="结果">结果</h3>
+<p>原始版本在当前环境试跑时首先报错：</p>
+<pre><code class="language-text">ModuleNotFoundError: No module named &#x27;gensim&#x27;
+</code></pre>
+<p>即使安装 <code>gensim</code>，后续也会因为缺少 <code>tangshi/</code> 数据集和 Mac 不支持 CUDA 而继续报错。</p>
+<h2 id="v01-一键训练入口与-mac-mps-适配">V0.1 一键训练入口与 Mac MPS 适配</h2>
+<h3 id="为什么这么改">为什么这么改</h3>
+<p>目标是让项目能在 MacBook M 系列上直接运行，并尽量做到“一键开始训练”。</p>
+<h3 id="改动了什么">改动了什么</h3>
+<ul>
+<li>重写 <code>main.py</code>，改成命令行入口。</li>
+<li>增加常用参数：
+<ul>
+<li><code>--epochs</code></li>
+<li><code>--batch-size</code></li>
+<li><code>--poem-type</code></li>
+<li><code>--device</code></li>
+<li><code>--quick-test</code></li>
+<li><code>--start-words</code></li>
+</ul>
+</li>
+<li>增加设备自动选择逻辑：
+<ul>
+<li>优先使用 <code>mps</code></li>
+<li>其次使用 <code>cuda</code></li>
+<li>最后回退到 <code>cpu</code></li>
+</ul>
+</li>
+<li>设置 <code>PYTORCH_ENABLE_MPS_FALLBACK=1</code>，允许部分 MPS 不支持的算子回退执行。</li>
+<li>新增 <code>start_training.command</code>，双击即可运行训练。</li>
+</ul>
+<h3 id="结果-1">结果</h3>
+<p>现在可以直接运行：</p>
+<pre><code class="language-bash">python main.py
+</code></pre>
+<p>或双击：</p>
+<pre><code class="language-text">start_training.command
+</code></pre>
+<p>也可以先用快速测试检查流程：</p>
+<pre><code class="language-bash">python main.py --quick-test
+</code></pre>
+<h2 id="v02-模型结构与数据管线重构">V0.2 模型结构与数据管线重构</h2>
+<h3 id="为什么这么改-1">为什么这么改</h3>
+<p>原始代码使用外部 <code>gensim.Word2Vec</code> 预训练字向量，增加了环境依赖，也让训练流程更复杂。对于字符级自动写诗实验，使用 PyTorch 自带 <code>nn.Embedding</code> 更直接，也更符合深度学习实验报告中的模型结构。</p>
+<h3 id="改动了什么-1">改动了什么</h3>
+<ul>
+<li>删除对 <code>gensim</code> 的依赖。</li>
+<li><code>classmodel.py</code> 改为：
+<ul>
+<li><code>nn.Embedding</code></li>
+<li><code>nn.LSTM</code></li>
+<li><code>nn.Dropout</code></li>
+<li><code>nn.Linear</code></li>
+</ul>
+</li>
+<li>Dataset 改为直接返回：
+<ul>
+<li>输入：当前字符序列</li>
+<li>标签：右移一位后的下一个字符序列</li>
+</ul>
+</li>
+<li><code>function.py</code> 中新增：
+<ul>
+<li>构建词表</li>
+<li>诗句编码</li>
+<li>训练集/验证集划分</li>
+</ul>
+</li>
+</ul>
+<h3 id="结果-2">结果</h3>
+<p>模型不再依赖 <code>gensim</code>，环境更简单。当前 <code>requirements.txt</code> 只保留：</p>
+<pre><code class="language-text">torch
+numpy
+matplotlib
+</code></pre>
+<h2 id="v03-自动下载数据集">V0.3 自动下载数据集</h2>
+<h3 id="为什么这么改-2">为什么这么改</h3>
+<p>原始代码要求手动准备 <code>tangshi/</code> 文件夹。为了实现“一键开始训练”，需要代码自动下载唐诗 JSON 数据。</p>
+<h3 id="改动了什么-2">改动了什么</h3>
+<ul>
+<li>在 <code>function.py</code> 中新增 <code>ensure_dataset()</code>。</li>
+<li>默认下载 <code>chinese-poetry/chinese-poetry</code> 仓库中的全唐诗 JSON：
+<ul>
+<li><code>poet.tang.0.json</code></li>
+<li><code>poet.tang.1000.json</code></li>
+<li>...</li>
+<li><code>poet.tang.57000.json</code></li>
+</ul>
+</li>
+<li>下载目录为 <code>tangshi/</code>。</li>
+<li>已存在且合法的 JSON 文件会自动跳过，不会重复下载。</li>
+<li>新增 <code>--max-files</code>，可只下载前 N 个文件做测试。</li>
+</ul>
+<h3 id="结果-3">结果</h3>
+<p>首次运行 <code>python main.py</code> 会自动下载数据。中途已经下载成功的 JSON 文件会保留，下次运行会从缺失文件继续。</p>
+<h2 id="v04-断点续训与训练产物缓存">V0.4 断点续训与训练产物缓存</h2>
+<h3 id="为什么这么改-3">为什么这么改</h3>
+<p>完整训练可能耗时较长，中途关闭终端、断电或手动 <code>Ctrl+C</code> 都不应该导致训练进度丢失。</p>
+<h3 id="改动了什么-3">改动了什么</h3>
+<ul>
+<li>新增 checkpoint 保存：
+<ul>
+<li><code>data/checkpoints/poem_7_latest.pt</code></li>
+<li><code>data/checkpoints/poem_7_epoch_XXX.pt</code></li>
+</ul>
+</li>
+<li>checkpoint 内容包括：
+<ul>
+<li>模型参数</li>
+<li>优化器状态</li>
+<li>当前 epoch</li>
+<li>global step</li>
+<li>词表</li>
+<li>训练历史指标</li>
+<li>训练配置</li>
+</ul>
+</li>
+<li>默认开启自动续训。</li>
+<li>新增 <code>--no-resume</code>，需要从头训练时可手动关闭续训。</li>
+<li>捕获 <code>KeyboardInterrupt</code>，中断时保存最新 checkpoint。</li>
+</ul>
+<h3 id="结果-4">结果</h3>
+<p>训练中断后，再次运行：</p>
+<pre><code class="language-bash">python main.py
+</code></pre>
+<p>会自动从 <code>data/checkpoints/poem_7_latest.pt</code> 继续训练。</p>
+<h2 id="v05-评测函数与可视化">V0.5 评测函数与可视化</h2>
+<h3 id="为什么这么改-4">为什么这么改</h3>
+<p>自动写诗不能只看训练 loss，还需要观察验证集 loss、困惑度、生成格式、多样性和样例文本。</p>
+<h3 id="改动了什么-4">改动了什么</h3>
+<ul>
+<li>新增验证集评测：
+<ul>
+<li><code>val_loss</code></li>
+<li><code>perplexity</code></li>
+</ul>
+</li>
+<li>新增生成质量指标：
+<ul>
+<li><code>format_accuracy</code></li>
+<li><code>distinct_1</code></li>
+<li><code>distinct_2</code></li>
+</ul>
+</li>
+<li>每轮生成样例，保存到：
+<ul>
+<li><code>data/samples/poem_7_epoch_XXX.txt</code></li>
+</ul>
+</li>
+<li>每轮更新可视化图：
+<ul>
+<li><code>data/figures/training_metrics_7.png</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="结果-5">结果</h3>
+<p>使用本地极小假数据做过完整流程验证：</p>
+<ul>
+<li>能读取 JSON。</li>
+<li>能预处理七言诗。</li>
+<li>能训练 1 轮。</li>
+<li>能保存 checkpoint。</li>
+<li>能生成样例。</li>
+<li>能生成指标图。</li>
+</ul>
+<h2 id="v06-git-与-github-管理">V0.6 Git 与 GitHub 管理</h2>
+<h3 id="为什么这么改-5">为什么这么改</h3>
+<p>需要能够查看每次代码版本，并把项目同步到 GitHub。</p>
+<h3 id="改动了什么-5">改动了什么</h3>
+<ul>
+<li>初始化本地 Git 仓库。</li>
+<li>分支名设置为 <code>main</code>。</li>
+<li>新增 <code>.gitignore</code>，避免提交大文件和缓存：
+<ul>
+<li><code>tangshi/</code></li>
+<li><code>data/</code></li>
+<li><code>__pycache__/</code></li>
+<li><code>*.pt</code></li>
+<li><code>*.pth</code></li>
+<li><code>*.bin</code></li>
+</ul>
+</li>
+<li>新增 <code>sync_to_github.command</code>。</li>
+<li>同步脚本绑定 GitHub 仓库：</li>
+</ul>
+<pre><code class="language-text">https://github.com/xiaoyanstudet/LSTM-poetry.git
+</code></pre>
+<h3 id="结果-6">结果</h3>
+<p>由于当前 Codex 沙箱不能直接写 <code>.git/config</code>，远程仓库配置需要在正常终端中执行，或通过双击 <code>sync_to_github.command</code> 让脚本自动尝试配置。</p>
+<p>后续推荐流程：</p>
+<pre><code class="language-bash">git add .
+git commit -m <span class="hljs-string">&quot;说明本次修改&quot;</span>
+git push
+</code></pre>
+<h2 id="v07-下载容错增强">V0.7 下载容错增强</h2>
+<h3 id="为什么这么改-6">为什么这么改</h3>
+<p>用户运行训练时，下载到 <code>poet.tang.43000.json</code> 附近出现网络中断：</p>
+<pre><code class="language-text">ConnectionResetError: [Errno 54] Connection reset by peer
+</code></pre>
+<p>这是 GitHub raw 网络连接被重置，不是训练逻辑错误。</p>
+<h3 id="改动了什么-6">改动了什么</h3>
+<ul>
+<li>下载源从单一 GitHub raw 改为多个镜像：
+<ul>
+<li><code>raw.githubusercontent.com</code></li>
+<li><code>cdn.jsdelivr.net</code></li>
+<li><code>fastly.jsdelivr.net</code></li>
+</ul>
+</li>
+<li>新增自动重试：
+<ul>
+<li><code>--download-retries</code></li>
+</ul>
+</li>
+<li>新增严格下载模式：
+<ul>
+<li><code>--strict-download</code></li>
+</ul>
+</li>
+<li>默认非严格模式下，如果个别文件暂时下载失败，会使用已经下载成功的 JSON 子集继续训练。</li>
+<li>下载完成后会检查 JSON 合法性，避免损坏文件进入训练。</li>
+</ul>
+<h3 id="结果-7">结果</h3>
+<p>下次运行时不会重新下载已存在且合法的 JSON 文件，会继续补缺失文件。若网络仍不稳定，默认可以先用已下载数据继续训练。</p>
+<h2 id="v08-50-轮训练结果观察">V0.8 50 轮训练结果观察</h2>
+<h3 id="为什么记录">为什么记录</h3>
+<p>用户已经完成 50 轮训练，并观察到生成效果不理想、出现繁体字、格式不稳定和过拟合迹象。</p>
+<h3 id="实际结果">实际结果</h3>
+<p>最新 checkpoint 中的历史指标如下：</p>
+<pre><code class="language-text">train_loss: 6.6854 -&gt; 3.3323
+val_loss:   6.2368 -&gt; 5.3418
+perplexity: 511.23 -&gt; 208.89
+format_accuracy: 0.00%
+distinct_1: 52.34%
+distinct_2: 95.16%
+</code></pre>
+<p>七言训练集规模：</p>
+<pre><code class="language-text">data/poem_7.txt: 10638 首
+data/poem_5.txt: 3912 首
+</code></pre>
+<p>第 50 轮样例中可以看到：</p>
+<ul>
+<li>模型已经学到一些唐诗风格词汇和意象。</li>
+<li>验证集 loss 后期上升，说明已经过拟合。</li>
+<li>生成格式不稳定，逗号和句号位置经常不符合七言绝句要求。</li>
+<li>出现繁体字和异体字，如 <code>煙</code>、<code>雲</code>、<code>風</code>、<code>萬</code>、<code>爲</code>、<code>歸</code>。</li>
+</ul>
+<h3 id="原因分析">原因分析</h3>
+<p>繁体字不是模型凭空生成的，而是训练数据本身存在。例如训练集中出现：</p>
+<pre><code class="language-text">煙 670
+雲 1513
+風 2262
+萬 848
+爲 1033
+歸 1050
+閑 699
+</code></pre>
+<p>格式不符合的主要原因是生成阶段没有强制七言绝句格式，标点被当作普通字符自由采样。</p>
+<p>过拟合的主要原因是：</p>
+<ul>
+<li>七言数据量只有约 1 万首。</li>
+<li>当前 LSTM 容量较大，<code>hidden_dim=600</code>、<code>num_layers=2</code>。</li>
+<li>训练到 50 轮后，训练 loss 继续下降，但验证 loss 已经回升。</li>
+</ul>
+<h3 id="结论">结论</h3>
+<p>继续单纯增加 epoch 不会明显改善质量，反而可能加重过拟合。后续应优先改：</p>
+<ol>
+<li>数据预处理阶段加入繁简转换。</li>
+<li>生成阶段强制七言格式：
+<ul>
+<li>第 8 个字符为 <code>，</code></li>
+<li>第 16 个字符为 <code>。</code></li>
+<li>第 24 个字符为 <code>，</code></li>
+<li>第 32 个字符为 <code>。</code></li>
+<li>其他位置禁止生成标点</li>
+</ul>
+</li>
+<li>加入 early stopping，保存验证 loss 最低的模型。</li>
+<li>适当降低模型容量或增加正则化：
+<ul>
+<li><code>hidden_dim=384</code> 或 <code>512</code></li>
+<li><code>weight_decay</code></li>
+<li>更高 dropout</li>
+</ul>
+</li>
+</ol>
+<h2 id="后续版本计划">后续版本计划</h2>
+<h3 id="v09-简体化与格式约束">V0.9 简体化与格式约束</h3>
+<p>计划改动：</p>
+<ul>
+<li>在预处理阶段统一转换为简体中文。</li>
+<li>对用户输入的起始句也做同样转换。</li>
+<li>生成时强制七言/五言标点位置。</li>
+<li>非标点位置禁止输出 <code>，</code>、<code>。</code>、<code>、</code>、<code>？</code>、<code>！</code> 等标点。</li>
+</ul>
+<p>预期结果：</p>
+<ul>
+<li>避免生成繁体字。</li>
+<li>显著提升 <code>format_accuracy</code>。</li>
+<li>首句如 <code>湖光秋月两相和</code> 不再因为词表缺字而丢字。</li>
+</ul>
+<h3 id="v10-early-stopping-与最佳模型保存">V1.0 Early Stopping 与最佳模型保存</h3>
+<p>计划改动：</p>
+<ul>
+<li>新增 <code>best.pt</code>。</li>
+<li>当验证 loss 创新低时保存最佳模型。</li>
+<li>若连续若干轮验证 loss 没有改善，自动停止训练。</li>
+</ul>
+<p>预期结果：</p>
+<ul>
+<li>避免使用明显过拟合的后期 checkpoint。</li>
+<li>报告中可以说明最佳 epoch，而不是只展示最后一轮。</li>
+</ul>
+
+            
+            
+        </body>
+        </html>
